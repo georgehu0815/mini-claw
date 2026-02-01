@@ -106,6 +106,12 @@ export async function switchSession(
 	await saveActiveSessions();
 }
 
+export async function clearActiveSession(chatId: number): Promise<void> {
+	await loadActiveSessions();
+	delete activeSessions[String(chatId)];
+	await saveActiveSessions();
+}
+
 export function resetActiveSessionsForTesting(): void {
 	activeSessions = {};
 	activeSessionsLoaded = false;

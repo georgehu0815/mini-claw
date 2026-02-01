@@ -2,11 +2,18 @@ import { spawn } from "node:child_process";
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import type { Config } from "./config.js";
 import { detectFiles, snapshotWorkspace } from "./file-detector.js";
-import { checkPiAuth, runPi } from "./pi-runner.js";
+import { markdownToHtml, stripMarkdown } from "./markdown.js";
+import {
+	type ActivityUpdate,
+	acquireLock,
+	checkPiAuth,
+	runPiWithStreaming,
+} from "./pi-runner.js";
 import { checkRateLimit } from "./rate-limiter.js";
 import {
 	archiveSession,
 	cleanupOldSessions,
+	clearActiveSession,
 	formatFileSize,
 	formatSessionAge,
 	generateSessionTitle,
@@ -216,13 +223,22 @@ Send any message to chat with AI.`,
 
 	// /new command - start fresh session
 	bot.command("new", async (ctx) => {
-		const archived = await archiveSession(config, ctx.chat.id);
-		if (archived) {
-			await ctx.reply(
-				`Session archived as ${archived}\nStarting fresh conversation.`,
-			);
-		} else {
-			await ctx.reply("Starting fresh conversation.");
+		// Must wait for any ongoing Pi execution to complete first
+		// Otherwise Pi will recreate the session file after we rename it
+		const release = await acquireLock(ctx.chat.id);
+		try {
+			const archived = await archiveSession(config, ctx.chat.id);
+			// Clear active session tracking for truly fresh start
+			await clearActiveSession(ctx.chat.id);
+			if (archived) {
+				await ctx.reply(
+					`Session archived as ${archived}\nStarting fresh conversation.`,
+				);
+			} else {
+				await ctx.reply("Starting fresh conversation.");
+			}
+		} finally {
+			release();
 		}
 	});
 
@@ -381,29 +397,84 @@ Send any message to chat with AI.`,
 		// Snapshot workspace before Pi execution
 		const beforeSnapshot = await snapshotWorkspace(workspace);
 
-		// Show typing indicator
-		await ctx.replyWithChatAction("typing");
+		// Send initial status message that we'll update
+		const statusMsg = await ctx.reply("🔄 Working...");
+		let lastStatusUpdate = Date.now();
 
-		// Keep sending typing indicator while processing
+		// Activity emoji mapping
+		const activityEmoji: Record<string, string> = {
+			thinking: "🧠",
+			reading: "📖",
+			writing: "✍️",
+			running: "⚡",
+			searching: "🔍",
+			working: "🔄",
+		};
+
+		// Format status message
+		const formatStatus = (activity: ActivityUpdate): string => {
+			const emoji = activityEmoji[activity.type] || "🔄";
+			const elapsed = `${activity.elapsed}s`;
+			const detail = activity.detail ? `\n└─ ${activity.detail}` : "";
+			return `${emoji} Working... (${elapsed})${detail}`;
+		};
+
+		// Activity callback - update status message
+		const onActivity = async (activity: ActivityUpdate) => {
+			// Throttle updates to avoid rate limits (max once per 2 seconds)
+			const now = Date.now();
+			if (now - lastStatusUpdate < 2000) return;
+			lastStatusUpdate = now;
+
+			try {
+				await ctx.api.editMessageText(
+					chatId,
+					statusMsg.message_id,
+					formatStatus(activity),
+				);
+			} catch {
+				// Ignore edit errors (message might be deleted, or content unchanged)
+			}
+		};
+
+		// Keep typing indicator active
 		const typingInterval = setInterval(() => {
-			ctx.replyWithChatAction("typing").catch(() => {
-				// Ignore errors
-			});
+			ctx.replyWithChatAction("typing").catch(() => {});
 		}, 4000);
 
 		try {
-			const result = await runPi(config, chatId, text, workspace);
+			const result = await runPiWithStreaming(
+				config,
+				chatId,
+				text,
+				workspace,
+				onActivity,
+			);
 
 			clearInterval(typingInterval);
+
+			// Delete status message
+			try {
+				await ctx.api.deleteMessage(chatId, statusMsg.message_id);
+			} catch {
+				// Ignore delete errors
+			}
 
 			if (result.error) {
 				await ctx.reply(`Error: ${result.error}`);
 			}
 
 			if (result.output) {
+				// Try to send as HTML, fallback to plain text
 				const chunks = splitMessage(result.output.trim());
 				for (const chunk of chunks) {
-					await ctx.reply(chunk);
+					try {
+						const html = markdownToHtml(chunk);
+						await ctx.reply(html, { parse_mode: "HTML" });
+					} catch {
+						// Fallback to plain text if HTML fails
+						await ctx.reply(stripMarkdown(chunk));
+					}
 				}
 			}
 
@@ -432,6 +503,12 @@ Send any message to chat with AI.`,
 			}
 		} catch (err) {
 			clearInterval(typingInterval);
+			// Try to delete status message on error too
+			try {
+				await ctx.api.deleteMessage(chatId, statusMsg.message_id);
+			} catch {
+				// Ignore
+			}
 			const errorMsg = err instanceof Error ? err.message : "Unknown error";
 			await ctx.reply(`Failed to process: ${errorMsg}`);
 		}
