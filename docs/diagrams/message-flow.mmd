@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant U as 👤 User
+    participant T as Telegram API
+    participant B as Bot Handler
+    participant R as Rate Limiter
+    participant L as AsyncLock
+    participant P as Pi Agent
+    participant AI as Claude/GPT
+    participant F as File Detector
+    participant S as Storage
+
+    U->>T: Send message
+    T->>B: Deliver message
+    B->>R: Check rate limit
+    alt Rate limited
+        R-->>U: Wait message
+    else Allowed
+        R->>B: OK
+        B->>L: Acquire lock
+        L->>P: Execute Pi
+        P->>S: Load session
+        P->>AI: API call
+        AI-->>P: Response
+        P->>S: Save session
+        P->>F: Check files
+        F->>S: Scan workspace
+        P-->>B: Output + files
+        L->>L: Release lock
+        B->>T: Send response
+        T->>U: Deliver response
+        alt Files detected
+            B->>T: Send files
+            T->>U: Files
+        end
+    end

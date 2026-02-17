@@ -16,6 +16,8 @@ A minimalist alternative to OpenClaw - use your Claude Pro/Max or ChatGPT Plus s
 
 ## Architecture
 
+Mini-Claw follows a layered architecture with clean separation between the Telegram bot layer, core services, Pi agent integration, and storage.
+
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │  Telegram   │────►│  Mini-Claw  │────►│  Pi Agent   │
@@ -27,6 +29,14 @@ A minimalist alternative to OpenClaw - use your Claude Pro/Max or ChatGPT Plus s
                     └── sessions/
                         └── telegram-<chat_id>.jsonl
 ```
+
+**📚 [Full Architecture Documentation](./docs/README.md)** - Comprehensive docs with detailed diagrams, data flows, and component descriptions.
+
+**Key Features:**
+- **Per-chat isolation** - AsyncLock prevents concurrent Pi executions
+- **Activity streaming** - Real-time status updates (reading, writing, running)
+- **File detection** - Auto-sends created files (images, PDFs, documents)
+- **Session management** - Archive, switch, title generation, cleanup
 
 ## Quick Start
 

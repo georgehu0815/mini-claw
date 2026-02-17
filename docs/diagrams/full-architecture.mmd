@@ -1,0 +1,109 @@
+graph TB
+    %% User & External Services Layer
+    subgraph external["🌐 External Services"]
+        User([👤 User])
+        TelegramAPI[Telegram Bot API]
+        Claude[Claude AI<br/>Anthropic]
+        ChatGPT[ChatGPT<br/>OpenAI]
+    end
+
+    %% Application Entry Layer
+    subgraph entry["🚀 Entry Point Layer"]
+        Main[index.ts<br/>① Load Config<br/>② Check Pi Auth<br/>③ Create Bot<br/>④ Start Server]
+        Config[config.ts<br/>Environment<br/>Variables]
+    end
+
+    %% Bot Layer
+    subgraph bot["🤖 Bot Layer - bot.ts"]
+        Commands[Command Handler<br/>/start, /help, /pwd<br/>/cd, /shell, /new<br/>/session, /status]
+        MessageHandler[Message Handler<br/>Text Processing]
+        CallbackHandler[Callback Handler<br/>Inline Keyboards]
+    end
+
+    %% Core Services Layer
+    subgraph services["⚙️ Core Services"]
+        RateLimit[rate-limiter.ts<br/>Cooldown<br/>Enforcement]
+        Workspace[workspace.ts<br/>Directory State<br/>Per Chat]
+        Sessions[sessions.ts<br/>Archive, Switch<br/>Title Generation<br/>Cleanup]
+    end
+
+    %% Pi Agent Layer
+    subgraph piLayer["🧠 Pi Agent Layer - pi-runner.ts"]
+        Lock[AsyncLock<br/>Per Chat<br/>Concurrency Control]
+        PiExec[Pi Process<br/>Spawn & Monitor]
+        ActivityStream[Activity Streaming<br/>Reading, Writing<br/>Running, Thinking]
+    end
+
+    %% Processing Layer
+    subgraph processing["📝 Processing Layer"]
+        FileDetector[file-detector.ts<br/>Parse Output<br/>Detect New Files<br/>Workspace Snapshot]
+        Markdown[markdown.ts<br/>Markdown → HTML<br/>Telegram Formatting]
+    end
+
+    %% Storage Layer
+    subgraph storage["💾 Storage Layer"]
+        SessionFiles[(Sessions<br/>JSONL files)]
+        WorkspaceState[(Workspace<br/>State JSON)]
+        UserWorkspace[(User<br/>Workspace)]
+        PiAuth[(Pi Auth<br/>Tokens)]
+    end
+
+    %% Data Flow - External to Entry
+    User -->|Message| TelegramAPI
+    TelegramAPI -->|Webhook/Poll| MessageHandler
+
+    %% Entry Layer Flow
+    Main --> Config
+    Main --> Commands
+
+    %% Bot Layer Flow
+    MessageHandler -->|Check| RateLimit
+    RateLimit -->|Allow| Workspace
+    Commands --> Workspace
+    Commands --> Sessions
+    CallbackHandler --> Sessions
+
+    %% Core to Pi Flow
+    Workspace -->|Get CWD| MessageHandler
+    MessageHandler -->|Acquire| Lock
+    Lock -->|Execute| PiExec
+
+    %% Pi to AI Flow
+    PiExec -->|API Call| Claude
+    PiExec -->|API Call| ChatGPT
+
+    %% Activity Updates
+    PiExec -->|Stream| ActivityStream
+    ActivityStream -.->|Status Updates| TelegramAPI
+
+    %% Response Flow
+    PiExec -->|Output| FileDetector
+    PiExec -->|Output| Markdown
+    FileDetector -->|Detected Files| TelegramAPI
+    Markdown -->|HTML Response| TelegramAPI
+    TelegramAPI -->|Reply| User
+
+    %% Storage Connections
+    PiExec <-->|Read/Write| SessionFiles
+    Workspace <-->|Persist| WorkspaceState
+    PiExec -->|Execute In| UserWorkspace
+    PiExec -->|Auth| PiAuth
+    Sessions <-->|Manage| SessionFiles
+    FileDetector -->|Scan| UserWorkspace
+
+    %% Styling
+    classDef external fill:#e7f5ff,stroke:#1971c2,stroke-width:2px
+    classDef entry fill:#d3f9d8,stroke:#2f9e44,stroke-width:2px
+    classDef bot fill:#ffe8cc,stroke:#d9480f,stroke-width:2px
+    classDef services fill:#e5dbff,stroke:#5f3dc4,stroke-width:2px
+    classDef pi fill:#ffe3e3,stroke:#c92a2a,stroke-width:2px
+    classDef processing fill:#c5f6fa,stroke:#0c8599,stroke-width:2px
+    classDef storage fill:#fff4e6,stroke:#e67700,stroke-width:2px
+
+    class User,TelegramAPI,Claude,ChatGPT external
+    class Main,Config entry
+    class Commands,MessageHandler,CallbackHandler bot
+    class RateLimit,Workspace,Sessions services
+    class Lock,PiExec,ActivityStream pi
+    class FileDetector,Markdown processing
+    class SessionFiles,WorkspaceState,UserWorkspace,PiAuth storage

@@ -1,0 +1,89 @@
+graph TB
+    %% External Layer
+    User([👤 Telegram User])
+
+    %% Bot Layer
+    subgraph bot["Mini-Claw Bot"]
+        direction TB
+        Entry[🚀 Entry Point<br/>Config • Auth Check • Startup]
+        Commands[🤖 Bot Commands<br/>/start /help /pwd /cd<br/>/shell /session /new]
+        Handler[💬 Message Handler<br/>Rate Limit • Workspace]
+    end
+
+    %% Services Layer
+    subgraph services["Core Services"]
+        direction LR
+        Rate[⏱️ Rate Limiter]
+        Work[📁 Workspace]
+        Sess[📚 Sessions]
+    end
+
+    %% Pi Layer
+    subgraph pi["Pi Agent Layer"]
+        direction TB
+        Lock[🔒 AsyncLock]
+        Exec[⚙️ Pi Executor]
+        Stream[📡 Activity Stream]
+    end
+
+    %% Processing
+    subgraph proc["Processing"]
+        direction LR
+        Files[📎 File Detector]
+        MD[📝 Markdown]
+    end
+
+    %% AI Providers
+    subgraph ai["AI Providers"]
+        direction LR
+        Claude[Claude AI]
+        GPT[ChatGPT]
+    end
+
+    %% Storage
+    subgraph storage["Storage"]
+        direction TB
+        Sessions[(Sessions<br/>JSONL)]
+        WS[(Workspace<br/>State)]
+        FS[(User Files)]
+    end
+
+    %% Flow
+    User -->|Message| Commands
+    User -->|Message| Handler
+    Entry --> Commands
+    Handler --> Rate
+    Rate --> Work
+    Handler --> Lock
+    Lock --> Exec
+    Exec --> Stream
+    Exec --> Claude
+    Exec --> GPT
+    Exec --> Files
+    Exec --> MD
+    Stream -.->|Updates| User
+    Files --> User
+    MD --> User
+
+    Commands --> Sess
+    Work <--> WS
+    Exec <--> Sessions
+    Exec --> FS
+    Sess <--> Sessions
+
+    %% Styling
+    classDef userStyle fill:#e7f5ff,stroke:#1971c2,stroke-width:3px
+    classDef botStyle fill:#d3f9d8,stroke:#2f9e44,stroke-width:2px
+    classDef serviceStyle fill:#e5dbff,stroke:#5f3dc4,stroke-width:2px
+    classDef piStyle fill:#ffe3e3,stroke:#c92a2a,stroke-width:2px
+    classDef procStyle fill:#c5f6fa,stroke:#0c8599,stroke-width:2px
+    classDef aiStyle fill:#ffe8cc,stroke:#d9480f,stroke-width:2px
+    classDef storageStyle fill:#fff4e6,stroke:#e67700,stroke-width:2px
+
+    class User userStyle
+    class Entry,Commands,Handler botStyle
+    class Rate,Work,Sess serviceStyle
+    class Lock,Exec,Stream piStyle
+    class Files,MD procStyle
+    class Claude,GPT aiStyle
+    class Sessions,WS,FS storageStyle
